@@ -76,7 +76,6 @@ Here we will add the "monitor_speed" option to set the serial monitor baud rate 
   platform = espressif32
   board = esp32dev
   framework = arduino
-  monitor_speed = 115200
   ```
 
 ## 🧾 Source Code: `src/main.cpp`
