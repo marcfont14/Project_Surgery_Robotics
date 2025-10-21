@@ -115,23 +115,38 @@ float getTorque(float& sum, int analogPin, float& previous) {
 }
 
 void moveServos() {
-  roll = Gri_roll;
-  OldValueRoll = roll;
-  pitch = Gri_pitch;
-  OldValuePitch = pitch;
-  yaw = Gri_yaw;
-  OldValueYaw = yaw;
+  // Get current orientation from UDP (gripper)
+  float roll = Gri_roll;   // degrees [-90, +90]
+  float pitch = Gri_pitch; // degrees [-90, +90]
+  float yaw = Gri_yaw;     // degrees [-90, +90]
 
+  // Offset for gripper opening (S1 button)
   float delta = 0;
   if (s1 == 0) {
     delta = 40;
     Serial.println("S1 premut → Obrint");
   }
 
-  servo_roll1.write(Gri_roll + delta);
-  servo_roll2.write(180 - Gri_roll);
-  servo_pitch.write(pitch);
-  servo_yaw.write(yaw);
+  // Compute servo target angles around neutral (90°)
+  int servoRoll1Angle = constrain(90 + roll + delta, 0, 180);
+  int servoRoll2Angle = constrain(90 - roll - delta, 0, 180);
+  int servoPitchAngle = constrain(90 + pitch, 0, 180);
+  int servoYawAngle   = constrain(90 + yaw, 0, 180);
+
+  // Send angles to servos
+  servo_roll1.write(servoRoll1Angle);
+  servo_roll2.write(servoRoll2Angle);
+  servo_pitch.write(servoPitchAngle);
+  servo_yaw.write(servoYawAngle);
+
+  // Debug output
+  Serial.print("RPY → Roll: "); Serial.print(roll);
+  Serial.print("°, Pitch: "); Serial.print(pitch);
+  Serial.print("°, Yaw: "); Serial.println(yaw);
+  Serial.print("Servo angles → R1: "); Serial.print(servoRoll1Angle);
+  Serial.print(", R2: "); Serial.print(servoRoll2Angle);
+  Serial.print(", P: "); Serial.print(servoPitchAngle);
+  Serial.print(", Y: "); Serial.println(servoYawAngle);
 }
 
 void setup() {
