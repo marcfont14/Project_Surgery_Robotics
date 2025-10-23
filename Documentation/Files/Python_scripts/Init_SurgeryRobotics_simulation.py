@@ -6,6 +6,11 @@ import tkinter as tk
 import threading
 import socket
 import json
+import os
+
+# Define the relative and absolute path to the RoboDK project file
+relative_path = "src/roboDK/SurgeryRobotics.rdk"
+absolute_path = os.path.abspath(relative_path)
 
 # Constants
 UDP_IP = "0.0.0.0"
@@ -28,6 +33,8 @@ sock.bind((UDP_IP, UDP_PORT))
 # Initialize RoboDK
 def initialize_robodk():
     RDK = Robolink()
+    time.sleep(2)  # wait for RoboDK to be ready
+    RDK.AddFile(absolute_path)
     robot = RDK.Item(ROBOT_NAME)
     base = RDK.Item(f'{ROBOT_NAME} Base')
     endowrist = RDK.Item('Endowrist')
