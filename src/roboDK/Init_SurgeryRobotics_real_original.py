@@ -6,12 +6,12 @@ import tkinter as tk
 import threading
 import socket
 import json
+import struct
 import os
 
 # Define the relative and absolute path to the RoboDK project file
 relative_path = "src/roboDK/SurgeryRobotics.rdk"
 absolute_path = os.path.abspath(relative_path)
-
 # Constants
 UDP_IP = "0.0.0.0"
 UDP_PORT = 12345
@@ -26,12 +26,21 @@ Gripper_rpy = None
 Servo_torques = None
 data_lock = threading.Lock()# semaphor to manage data from 2 threads
 
+# Robot Constants setup
+ROBOT_IP = '192.168.1.5'
+ROBOT_PORT = 30002 # Default port for UR robots
+accel_mss = 1.2
+speed_ms = 0.75
+timel = 0.1 # seconds to finish movel
+timel2 = 0.5 # seconds to finish movel2
+
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
 #print(f"Listening on {UDP_IP}:{UDP_PORT}")
 
+
 # Initialize RoboDK
-def initialize_robodk():
+def initialize_robodk(absolute_path):
     RDK = Robolink()
     time.sleep(2)  # wait for RoboDK to be ready
     RDK.AddFile(absolute_path)
@@ -51,7 +60,18 @@ def initialize_robodk():
     needle.setPose(needle_init)
     robot.setSpeed(50)
     robot.MoveL(Init_target)
-    return robot, base, gripper, needle
+    return RDK, robot, base, gripper, needle
+
+# Initialize UR5e socket communication
+def check_robot_port(ROBOT_IP, ROBOT_PORT):
+    global robot_socket
+    try:
+        robot_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        robot_socket.settimeout(1)  # Tiempo de espera de 1 segundo
+        robot_socket.connect((ROBOT_IP, ROBOT_PORT)) 
+        return True
+    except (socket.timeout, ConnectionRefusedError):
+        return False
 
 # Transformation Endowrist to base
 def endowrist2base_orientation(roll, pitch, yaw):
@@ -65,6 +85,16 @@ def update_text_label(label, tool_orientation, gripper_orientation, status_messa
     full_text = f"Tool orientation: {tool_orientation}\nGripper orientation: {gripper_orientation}\n{status_message}\nTorque Values: {torque_values}"
     label.after(0, lambda: label.config(text=full_text))
 
+def send_ur_script(command):
+    robot_socket.send(("{}\n".format(command)).encode())
+    
+def receive_response(t):
+    try:
+        print("Waiting time: " + str(t))
+        time.sleep(t)       
+    except socket.error as e:
+        print(f"Error receiving data from the robot: {e}")
+        exit(1) #Non-zero exit status code to indicate the error
 # Function to read UDP data and update the global variable
 def read_data_UDP():
     global Endowrist_rpy, Gripper_rpy, data_lock
@@ -74,10 +104,10 @@ def read_data_UDP():
             try:
                 received_data = json.loads(data.decode())
                 device_id = received_data.get("device")
-                if device_id == "G3_Endo":
+                if device_id == "G5_Endo":
                     with data_lock:
                         Endowrist_rpy = received_data
-                elif device_id == "G3_Gri":
+                elif device_id == "G5_Gri":
                     with data_lock:
                         Gripper_rpy = received_data
             except json.JSONDecodeError:
@@ -90,7 +120,7 @@ def read_data_UDP():
 
 # Function to process the latest UDP data and move the robot
 def move_robot(robot, gripper, needle, text_label):
-    global ZERO_YAW_TOOL, ZERO_YAW_GRIPPER, Endowrist_rpy, Gripper_rpy, data_lock
+    global ZERO_YAW_TOOL, ZERO_YAW_GRIPPER, Endowrist_rpy, Gripper_rpy, data_lock, robot_is_connected
     global e_roll, e_pitch, e_yaw, g_roll, g_pitch, g_yaw, s1, s2, s3, s4
     
     endowrist_orientation_msg = ""
@@ -119,13 +149,21 @@ def move_robot(robot, gripper, needle, text_label):
                 robot.MoveL(endowrist_pose_new, True)
                 endowrist_orientation_msg = f"R={round(endo_roll)} P={round(endo_pitch)} W={round((endo_yaw+ZERO_YAW_TOOL)%360)}"
                 status_message = ""
+                if robot_is_connected:
+                    # Send the endowrist pose to the robot
+                    Xr, Yr, Zr, rr, pr, yr = Pose_2_TxyzRxyz(endowrist_pose_new)
+                    endowrist_pose_msg = f"movel(p[{Xr}, {Yr}, {Zr}, {rr}, {pr}, {yr}], a={accel_mss}, v={speed_ms}, t={timel}, r=0.0000)"
+                    send_ur_script(endowrist_pose_msg)
+                    receive_response(timel)
+                   
             else:
                 endowrist_orientation_msg = f"R={round(endo_roll)} P={round(endo_pitch)} W={round((endo_yaw+ZERO_YAW_TOOL)%360)}"
                 status_message = "Robot cannot reach the position"
                 
             if s3 == 0 or s4 == 0:
                 current_pose = robot.Pose()
-                # Z movement based on S3 and S4 buttons
+                
+                # Decideix la translació en Z local
                 Tz = transl(0, 0, 5) if s3 == 0 else transl(0, 0, -5)
                 new_pose = current_pose * Tz  # translació relativa
 
@@ -135,7 +173,7 @@ def move_robot(robot, gripper, needle, text_label):
                     robot.MoveL(new_pose, True)
                 else:
                     status_message = "❌ No es pot moure més en Z (relatiu)"
-                    
+
         if current_Gripper_rpy:
             g_roll = Gripper_rpy.get("roll")
             g_pitch = Gripper_rpy.get("pitch")
@@ -158,8 +196,8 @@ def move_robot(robot, gripper, needle, text_label):
                 #Tanca la pinça → agafa l’agulla
                 needle.setParent(gripper)
                 needle.setPose(TxyzRxyz_2_Pose([0, 0, 0, 0, 0, 0]))
-                status_message = "🔵 S2 premut: agulla agafada"
-                     
+                status_message = "🔵 S1 no premut: agulla agafada"
+                
         # Update the label with the latest values
         update_text_label(text_label, endowrist_orientation_msg, gripper_orientation_msg, status_message, servo_torques_msg)
 
@@ -171,8 +209,8 @@ def on_closing():
     try:
         sock.close()
         print("Ending Socket")
-        initialize_robodk()
-        print("Program INITIALIZED")
+        #initialize_robodk()
+        #print("Program INITIALIZED")
     except Exception as e:
         #print(f"Error al tancar el socket: {e}")
         pass
@@ -187,10 +225,13 @@ def set_zero_yaw_gripper(value):
     ZERO_YAW_GRIPPER = float(value)
 # Main function
 def main():
-    global root, ZERO_YAW_TOOL, ZERO_YAW_GRIPPER, robot, gripper, base, text_label
+    global root, ZERO_YAW_TOOL, ZERO_YAW_GRIPPER, robot, gripper, base, text_label, robot_is_connected, absolute_path
     
-    robot, base, gripper, needle = initialize_robodk()
-
+    RDK, robot, base, gripper, needle = initialize_robodk(absolute_path)
+    
+    #Connexio amb robot UR5e
+    robot_is_connected=check_robot_port(ROBOT_IP, ROBOT_PORT)
+    
     root = tk.Tk()
     root.title("Suture Process")
     root.protocol("WM_DELETE_WINDOW", on_closing) # Proper clossing
@@ -219,6 +260,9 @@ def main():
     robot_thread.start()
 
     root.mainloop()
+    print("Pop-up menu closed")
+    RDK.CloseRoboDK()
+    print("RoboDK closed")
 
 if __name__ == "__main__":
     main()

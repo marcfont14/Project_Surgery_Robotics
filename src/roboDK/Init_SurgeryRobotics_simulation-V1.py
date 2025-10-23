@@ -11,7 +11,6 @@ import os
 # Define the relative and absolute path to the RoboDK project file
 relative_path = "src/roboDK/SurgeryRobotics.rdk"
 absolute_path = os.path.abspath(relative_path)
-
 # Constants
 UDP_IP = "0.0.0.0"
 UDP_PORT = 12345
@@ -31,7 +30,7 @@ sock.bind((UDP_IP, UDP_PORT))
 #print(f"Listening on {UDP_IP}:{UDP_PORT}")
 
 # Initialize RoboDK
-def initialize_robodk():
+def initialize_robodk(absolute_path):
     RDK = Robolink()
     time.sleep(2)  # wait for RoboDK to be ready
     RDK.AddFile(absolute_path)
@@ -51,11 +50,11 @@ def initialize_robodk():
     needle.setPose(needle_init)
     robot.setSpeed(50)
     robot.MoveL(Init_target)
-    return robot, base, gripper, needle
+    return RDK, robot, base, gripper, needle
 
 # Transformation Endowrist to base
 def endowrist2base_orientation(roll, pitch, yaw):
-    roll2 = (roll + 90) % 360
+    roll2 = (roll + 90) % 360 #es col·loca el endowrist a -90º (vertical), el corregim
     pitch2 = pitch % 360
     yaw2 = yaw % 360
     return roll2, pitch2, yaw2
@@ -136,19 +135,26 @@ def move_robot(robot, gripper, needle, text_label):
                 else:
                     status_message = "❌ No es pot moure més en Z (relatiu)"
                     
-        if current_Gripper_rpy:
+        if current_Gripper_rpy: #CORREGIR A PARTIR D'AQUÍ
             g_roll = Gripper_rpy.get("roll")
+            # corregir roll (provisional)
+            g_roll = g_roll - endo_roll
+            # ara quan estan en 90º el pitch del gripper sera el yaw del endowrist
             g_pitch = Gripper_rpy.get("pitch")
+            g_pitch = g_pitch - endo_yaw
+            # el mateix amb el yaw, correspondra a pitch del endo pero amb signe canviat ja que y endo va cap a baix
             g_yaw = Gripper_rpy.get("yaw")
+            g_yaw = g_yaw + endo_pitch
             s1 = Gripper_rpy.get("s1")
             s2 = Gripper_rpy.get("s2")
             #print(f"Gripper: {g_roll}, {g_pitch}, {g_yaw}")
             # Move Gripper
             gripper_pose = gripper.Pose()
             Xg, Yg, Zg, rg, pg, yg = Pose_2_TxyzRxyz(gripper_pose)
+            # Aquesta línea. Lectura ("roll") gripper - "roll" endowrist
             gripper_pose_new = transl(Xg, Yg, Zg) * rotz(math.radians(ZERO_YAW_GRIPPER)) * rotz(math.radians(g_yaw)) * roty(math.radians(g_pitch)) * rotx(math.radians(g_roll))
             gripper.setPose(gripper_pose_new)
-            gripper_orientation_msg = f"R={round(g_roll)} P={round(g_pitch)} W={round((g_yaw+ZERO_YAW_GRIPPER)%360)}"     
+            gripper_orientation_msg = f"R={round(g_roll)} P={round(g_pitch)} W={round((g_yaw+ZERO_YAW_GRIPPER)%360)}"    
             if s1 == 0:
                 #Obre la pinça → deixa anar l’agulla
                 needle.setParentStatic(base)
@@ -158,7 +164,7 @@ def move_robot(robot, gripper, needle, text_label):
                 #Tanca la pinça → agafa l’agulla
                 needle.setParent(gripper)
                 needle.setPose(TxyzRxyz_2_Pose([0, 0, 0, 0, 0, 0]))
-                status_message = "🔵 S2 premut: agulla agafada"
+                status_message = "🔵 S1 no premut: agulla agafada"
                      
         # Update the label with the latest values
         update_text_label(text_label, endowrist_orientation_msg, gripper_orientation_msg, status_message, servo_torques_msg)
@@ -171,12 +177,13 @@ def on_closing():
     try:
         sock.close()
         print("Ending Socket")
-        initialize_robodk()
-        print("Program INITIALIZED")
+        #initialize_robodk()
+        #print("Program INITIALIZED")
     except Exception as e:
         #print(f"Error al tancar el socket: {e}")
         pass
     root.destroy()
+
 # Update functions for sliders
 def set_zero_yaw_tool(value):
     global ZERO_YAW_TOOL
@@ -185,11 +192,12 @@ def set_zero_yaw_tool(value):
 def set_zero_yaw_gripper(value):
     global ZERO_YAW_GRIPPER
     ZERO_YAW_GRIPPER = float(value)
+
 # Main function
 def main():
-    global root, ZERO_YAW_TOOL, ZERO_YAW_GRIPPER, robot, gripper, base, text_label
+    global root, ZERO_YAW_TOOL, ZERO_YAW_GRIPPER, robot, gripper, base, text_label, absolute_path
     
-    robot, base, gripper, needle = initialize_robodk()
+    RDK, robot, base, gripper, needle = initialize_robodk(absolute_path)
 
     root = tk.Tk()
     root.title("Suture Process")
@@ -219,6 +227,9 @@ def main():
     robot_thread.start()
 
     root.mainloop()
+    print("Pop-up menu closed")
+    RDK.CloseRoboDK()
+    print("RoboDK closed")
 
 if __name__ == "__main__":
     main()
