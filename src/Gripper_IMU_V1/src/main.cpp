@@ -32,6 +32,9 @@ IMU imu;
 
 // Orientation data
 float Gri_roll = 0.0, Gri_pitch = 0.0, Gri_yaw = 0.0;
+// NEW: Definir les variables dels torques
+float Torque_roll1 = 0.0, Torque_roll2 = 0.0, Torque_pitch = 0.0, Torque_yaw = 0.0;
+
 
 void connectToWiFi() {
   Serial.print("Connecting to Wi-Fi");
@@ -51,7 +54,7 @@ void updateOrientation() {
   imu.ReadSensor();
   // Obté els angles (roll, pitch, yaw) via GetRPW()
   float* rpw = imu.GetRPW();
-  Gri_roll  = rpw[0];
+  Gri_roll  = rpw[0];  
   Gri_pitch = rpw[1];
   Gri_yaw   = rpw[2];
   s1Status = digitalRead(PIN_S1);
@@ -59,7 +62,7 @@ void updateOrientation() {
 }
 
 void sendOrientationUDP() {
-  JsonDocument doc;
+  JsonDocument doc; // Create Json with device, RPY, s1 and s2
   doc["device"] = deviceId;
   doc["roll"] = Gri_roll;
   doc["pitch"] = Gri_pitch;
@@ -70,16 +73,61 @@ void sendOrientationUDP() {
   char jsonBuffer[512];
   serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
 
-  // Send to ESP32 Servos
+  // Send Json to ESP32 Servos
   udp.beginPacket(receiverESP32IP, udpPort);
   udp.write((const uint8_t*)jsonBuffer, strlen(jsonBuffer));
   udp.endPacket();
 
-  // Send to Computer
+  // Send Json to Computer
   udp.beginPacket(receiverComputerIP, udpPort);
   udp.write((const uint8_t*)jsonBuffer, strlen(jsonBuffer));
   udp.endPacket();
 }
+
+
+// NEW: funció que rep els Torques (agafem la funció recieveOrientationUDP de main.ccp de Servos com a model)
+void recieveTorquesUDP() { //
+  int packetSize = udp.parsePacket();
+  if (packetSize) {
+    byte packetBuffer[512];
+    int len = udp.read(packetBuffer, 512);
+    if (len > 0) {
+      packetBuffer[len] = '\0';
+      Serial.print("Received packet size: ");
+      Serial.println(packetSize);
+      Serial.print("Received: ");
+      Serial.println((char*)packetBuffer);
+
+      JsonDocument doc; 
+      DeserializationError error = deserializeJson(doc, packetBuffer);
+      if (error) {
+        Serial.print(F("deserializeJson() failed: "));
+        Serial.println(error.f_str());
+        return;
+      }
+
+      const char* device = doc["device"];
+      if (strcmp(device, "G3_Servos") == 0) { //change Gri->Servos
+        // NEW: Torque redeffinition
+        Torque_roll1 = doc["Torque_roll1"];
+        Torque_roll2 = doc["Torque_roll2"];
+        Torque_pitch = doc["Torque_pitch"];
+        Torque_yaw = doc["Torque_yaw"];
+
+        // NEW: code from "LabSession3&4"
+        // Vibration motor control based on torque values
+        float totalTorque = Torque_roll1 + Torque_pitch + Torque_yaw;
+        // Convert torque to PWM value (0-255)
+        int vibrationValue = constrain(totalTorque * 2.5, 0, 255); // Adjust the scaling factor as needed
+        ledcWrite(0, vibrationValue); // Set the PWM value for the vibration motor
+        Serial.print("Vibration motor value: ");
+        Serial.println(vibrationValue); 
+      }
+    }
+  }
+}
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -93,6 +141,11 @@ void setup() {
   udp.begin(udpPort);
   Serial.println("UDP initialized");
 
+  // NEW: (code from "LabSession3&4")
+  // Configure PWM for the vibration motor (channel 0)
+  ledcSetup(0, 5000, 8); // Channel 0, frequency 5kHz, resolution 8 bits
+  ledcAttachPin(vibrationPin, 0); // Attach the vibration motor to channel 0
+
   pinMode(PIN_S1, INPUT);
   pinMode(PIN_S2, INPUT);
 }
@@ -100,5 +153,9 @@ void setup() {
 void loop() {
   updateOrientation();
   sendOrientationUDP();
+
+  // NEW: recieve torques and modify vibration
+  recieveTorquesUDP();
+  
   delay(10);
 }
