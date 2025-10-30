@@ -142,7 +142,7 @@ def move_robot(robot, gripper, needle, text_label):
             g_pitch = Gripper_rpy.get("pitch")
             g_pitch = g_pitch - endo_pitch #not endo_yaw perquè ja està compensat en endowrist2base_orientation
             g_yaw = Gripper_rpy.get("yaw")
-            g_yaw = g_yaw + endo_yaw #not endo_pitch ""
+            g_yaw = g_yaw - endo_yaw #not endo_pitch ""
             s1 = Gripper_rpy.get("s1")
             s2 = Gripper_rpy.get("s2")
             #print(f"Gripper: {g_roll}, {g_pitch}, {g_yaw}")
