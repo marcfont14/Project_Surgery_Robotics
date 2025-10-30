@@ -161,6 +161,33 @@ void moveServos() {
 }
 
 
+
+
+// NEW: send torque to Gripper and to computer
+void sendTorquesUDP() {
+  JsonDocument doc;
+  doc["device"] = deviceId;
+  doc["Torque_roll1"] = Torque_roll1;
+  doc["Torque_roll2"] = Torque_roll2;
+  doc["Torque_pitch"] = Torque_pitch;
+  doc["Torque_yaw"] = Torque_yaw;
+
+  char jsonBuffer[512];
+  serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
+  
+  // Send Json to Gripper
+  udp.beginPacket(receiverESP32IP, udpPort);
+  udp.write((const uint8_t*)jsonBuffer, strlen(jsonBuffer));
+  udp.endPacket();
+
+  // Send Json to Computer
+  udp.beginPacket(receiverComputerIP, udpPort);
+  udp.write((const uint8_t*)jsonBuffer, strlen(jsonBuffer));
+  udp.endPacket();
+}
+
+
+
 void setup() {
   Serial.begin(115200);
   Wire.begin();
@@ -199,5 +226,14 @@ void setup() {
 void loop() {
   receiveOrientationUDP();
   moveServos();
+  
+  // NEW: llegim torques from ADCs
+  Torque_roll1 = getTorque(sumRoll1, PIN_ANALOG_ROLL1, prevRoll1);
+  Torque_roll2 = getTorque(sumRoll2, PIN_ANALOG_ROLL2, prevRoll2);
+  Torque_pitch = getTorque(sumPitch, PIN_ANALOG_PITCH, prevPitch);
+  Torque_yaw = getTorque(sumYaw, PIN_ANALOG_YAW, prevYaw);
+  // NEW: enviem els torques amb la nova funció creada
+  sendTorquesUDP();
+  
   delay(10);
 }
