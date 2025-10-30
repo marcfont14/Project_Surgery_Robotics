@@ -115,12 +115,12 @@ float getTorque(float& sum, int analogPin, float& previous) {
 }
 
 void moveServos() {
-  // --- Get received orientation values ---
+  // --- Get the received orientation values ---
   roll = Gri_roll;
   pitch = Gri_pitch;
   yaw = Gri_yaw;
 
-  // --- Normalize angles to [-180, 180] range ---
+  // --- Normalize roll & pitch to [-180, 180] range ---
   auto normalize = [](float angle) {
     angle = fmod(angle + 180.0f, 360.0f);
     if (angle < 0) angle += 360.0f;
@@ -129,7 +129,7 @@ void moveServos() {
 
   roll  = normalize(roll);
   pitch = normalize(pitch);
-  yaw   = normalize(yaw);
+  // yaw stays as-is (0–360)
 
   // --- Optional gripper open offset (S1 button) ---
   float delta = 0;
@@ -138,16 +138,16 @@ void moveServos() {
     Serial.println("S1 pressed → Opening gripper");
   }
 
-  // --- Map normalized angles (-180,180) → servo angles (0,180) ---
+  // --- Map normalized angles to servo range (0–180°) ---
   auto mapToServo = [](float angle) {
-    // linear mapping: -180 → 0, 0 → 90, +180 → 180
+    // maps [-180,180] → [0,180]; 0° stays at 90°
     return constrain(90 + (angle / 2.0f), 0, 180);
   };
 
   int servoRoll1Angle = mapToServo( roll + delta);
   int servoRoll2Angle = mapToServo(-roll - delta);
   int servoPitchAngle = mapToServo( pitch );
-  int servoYawAngle   = mapToServo( yaw );
+  int servoYawAngle   = constrain(90 + yaw, 0, 180);  // yaw stays linear 0–180
 
   // --- Write to servos ---
   servo_roll1.write(servoRoll1Angle);
