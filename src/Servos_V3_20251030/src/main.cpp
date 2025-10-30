@@ -120,6 +120,14 @@ void moveServos() {
   pitch = Gri_pitch;
   yaw = Gri_yaw;
 
+  // --- Normalize angles: if roll or pitch in [270,360] map to negative equivalent ---
+  if (roll >= 270.0f && roll <= 360.0f) {
+    roll -= 360.0f;
+  }
+  if (pitch >= 270.0f && pitch <= 360.0f) {
+    pitch -= 360.0f;
+  }
+
   // --- Optional gripper open offset (S1 button) ---
   float delta = 0;
   if (s1 == 0) {
