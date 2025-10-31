@@ -80,10 +80,12 @@ def read_data_UDP():
                     with data_lock:
                         Gripper_rpy = received_data
                         #Guardar també els torques si hi són
-                        Servo_torques["roll1"]=received_data.get("torque_roll1", 0.0)
-                        Servo_torques["roll2"]=received_data.get("torque_roll2", 0.0)
-                        Servo_torques["pitch"]=received_data.get("torque_pitch", 0.0)
-                        Servo_torques["yaw"]=received_data.get("torque_yaw", 0.0)
+                elif device_id == "G3_Servos":
+                    #New! dades de torques enviades des de l'ESP32
+                    Servo_torques["torque_roll1"]=received_data.get("Torque_roll1", 0.0)
+                    Servo_torques["torque_roll2"]=received_data.get("Torque_roll2", 0.0)
+                    Servo_torques["torque_pitch"]=received_data.get("Torque_pitch", 0.0)
+                    Servo_torques["torque_yaw"]=received_data.get("Torque_yaw", 0.0)
             except json.JSONDecodeError:
                 print("Error decoding JSON data")
         except socket.error as e:
