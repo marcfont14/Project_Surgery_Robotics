@@ -79,13 +79,9 @@ def read_data_UDP():
                 elif device_id == "G3_Gri":
                     with data_lock:
                         Gripper_rpy = received_data
-                        #Guardar també els torques si hi són
                 elif device_id == "G3_Servos":
-                    #New! dades de torques enviades des de l'ESP32
-                    Servo_torques["torque_roll1"]=received_data.get("Torque_roll1", 0.0)
-                    Servo_torques["torque_roll2"]=received_data.get("Torque_roll2", 0.0)
-                    Servo_torques["torque_pitch"]=received_data.get("Torque_pitch", 0.0)
-                    Servo_torques["torque_yaw"]=received_data.get("Torque_yaw", 0.0)
+                    with data_lock:
+                        Servo_torques = received_data
             except json.JSONDecodeError:
                 print("Error decoding JSON data")
         except socket.error as e:
@@ -108,10 +104,7 @@ def move_robot(robot, gripper, needle, text_label):
         with data_lock:
             current_Endowrist_rpy = Endowrist_rpy
             current_Gripper_rpy = Gripper_rpy
-            torque_values=(f"R1={Servo_torques['roll1']:.2f},"
-                           f"R2={Servo_torques['roll2']:.2f},"
-                           f"P={Servo_torques['pitch']:.2f},"
-                           f"Y={Servo_torques['yaw']:.2f}")
+            current_Servo_torques = Servo_torques
 
         if current_Endowrist_rpy:
             e_roll = Endowrist_rpy.get("roll")
@@ -153,7 +146,7 @@ def move_robot(robot, gripper, needle, text_label):
             g_pitch = Gripper_rpy.get("pitch")
             g_pitch = g_pitch - endo_pitch #not endo_yaw perquè ja està compensat en endowrist2base_orientation
             g_yaw = Gripper_rpy.get("yaw")
-            g_yaw = g_yaw + endo_yaw #not endo_pitch ""
+            g_yaw = g_yaw - endo_yaw #not endo_pitch ""
             s1 = Gripper_rpy.get("s1")
             s2 = Gripper_rpy.get("s2")
             #print(f"Gripper: {g_roll}, {g_pitch}, {g_yaw}")
@@ -174,6 +167,14 @@ def move_robot(robot, gripper, needle, text_label):
                 needle.setParent(gripper)
                 needle.setPose(TxyzRxyz_2_Pose([0, 0, 0, 0, 0, 0]))
                 status_message = "🔵 S1 no premut: agulla agafada"
+        if current_Servo_torques:
+            t1 = current_Servo_torques.get("Torque_roll1", 0)
+            t2 = current_Servo_torques.get("Torque_roll2", 0)
+            tp = current_Servo_torques.get("Torque_pitch", 0)
+            ty = current_Servo_torques.get("Torque_yaw", 0)
+            servo_torques_msg = f"R1={t1:.2f}, R2={t2:.2f}, P={tp:.2f}, Y={ty:.2f}"
+        else:
+            servo_torques_msg = "No torque data"
                      
         # Update the label with the latest values
         update_text_label(text_label, endowrist_orientation_msg, gripper_orientation_msg, status_message, servo_torques_msg)
