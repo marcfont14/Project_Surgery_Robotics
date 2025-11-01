@@ -1,3 +1,5 @@
+// ####### INICIAL CONFIG #######################################
+
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <Wire.h>
@@ -40,10 +42,13 @@ float Gri_roll = 0.0, Gri_pitch = 0.0, Gri_yaw = 0.0;
 float Torque_roll1 = 0.0, Torque_roll2 = 0.0, Torque_pitch = 0.0, Torque_yaw = 0.0;
 float prevRoll1 = 0, prevRoll2 = 0, prevPitch = 0, prevYaw = 0;
 float sumRoll1 = 0, sumRoll2 = 0, sumPitch = 0, sumYaw = 0;
-float OldValueRoll = 0, OldValuePitch = 0, OldValueYaw = 0;
+float OldValueRoll = 0, OldValuePitch = 0, OldValueYaw = 0; // we do not use
 float roll = 0, pitch = 0, yaw = 0;
 int s1 = 1, s2 = 1;
+float YawInit = 0, prevGriYaw = 0, prevYaw = 0;
+bool yaw_initialized = false;
 
+// ####### CONNECT TO WIFI #######################################
 void connectToWiFi() {
   Serial.print("Connecting to Wi-Fi");
   WiFi.begin(ssid, password);
@@ -57,6 +62,8 @@ void connectToWiFi() {
   Serial.println(WiFi.macAddress());
 }
 
+
+// ####### RECIEVE DATA FROM GRIPPER #######################################
 void receiveOrientationUDP() {
   int packetSize = udp.parsePacket();
   if (packetSize) {
@@ -96,6 +103,8 @@ void receiveOrientationUDP() {
   }
 }
 
+
+// ####### DEFINE I (current) AND T (TORQUE) #######################################
 float getCurrent(uint32_t integrationTimeMs, int pin) {
   uint32_t startTime = millis();
   float integratedCurrent = 0;
@@ -114,22 +123,52 @@ float getTorque(float& sum, int analogPin, float& previous) {
   return diff;
 }
 
+// ####### TRY TO NORMALIZE ANGLES (NO WRAP) #######################################
+float normalizeAngle(float angle) {
+  angle = fmod(angle, 360.0f);      // Range 0-360
+  if (angle > 180.0f) angle -= 360.0f; // Converts from -180 to +180
+  return angle;
+}
+
+// ####### CONTROL MOTORS ACCORDING TO RPY #######################################
 void moveServos() {
-  // --- Get the received orientation values ---
-  roll = Gri_roll;
-  pitch = Gri_pitch;
-  yaw = Gri_yaw;
+  //// --- Get the received orientation values ---
+  //roll = Gri_roll;
+  //pitch = Gri_pitch;
+  //yaw = Gri_yaw;
+  //// --- Normalize roll & pitch to [-180, 180] range ---
+  //auto normalize = [](float angle) {
+  //  angle = fmod(angle + 180.0f, 360.0f);
+  //  if (angle < 0) angle += 360.0f;
+  //  return angle - 180.0f;
+  //};
+  //roll  = normalize(roll);
+  //pitch = normalize(pitch);
+  //// yaw stays as-is (0–360)
 
-  // --- Normalize roll & pitch to [-180, 180] range ---
-  auto normalize = [](float angle) {
-    angle = fmod(angle + 180.0f, 360.0f);
-    if (angle < 0) angle += 360.0f;
-    return angle - 180.0f;
-  };
+  roll = normalizeAngle(Gri_roll);
+  pitch = normalizeAº(Gri_pitch);
 
-  roll  = normalize(roll);
-  pitch = normalize(pitch);
-  // yaw stays as-is (0–360)
+  // ---------------------V1---------------------
+  if (!yaw_initialized) {
+    YawInit = Gri_yaw;
+    yaw_initialized = true;
+  }
+  yaw = Gri_yaw - YawInit;
+
+  // ---------------------V2---------------------
+  if (!yaw_initialized) {
+    prevGriYaw = Gri_yaw; 
+    prevYaw = 0; 
+    yaw_initialized = true;
+  }
+  deltaYaw = Gri_yaw - prevGriYaw;
+  yaw = prevYaw + deltaYaw
+  prevYaw = yaw;
+  prevGriYaw = Gri_yaw;
+
+
+
 
   // --- Optional gripper open offset (S1 button) ---
   float delta = 0;
@@ -156,8 +195,7 @@ void moveServos() {
   servo_yaw.write(servoYawAngle);
 }
 
-
-// NEW: send torque to Gripper and to computer
+// ####### SEND TORQUE VALUES TO GRIPPER #######################################
 void sendTorquesUDP() {
   JsonDocument doc;
   doc["device"] = deviceId;
