@@ -7,6 +7,9 @@ import threading
 import socket
 import json
 import os
+import random
+import time
+import tkinter.font as tkFont 
 
 # Define the relative and absolute path to the RoboDK project file
 relative_path = "src/roboDK/SurgeryRobotics.rdk"
@@ -24,6 +27,14 @@ Endowrist_rpy = None
 Gripper_rpy = None
 Servo_torques = None
 data_lock = threading.Lock()# semaphor to manage data from 2 threads
+
+current_vibration = 0 ####### NEW
+########### REMOVE ###########
+last_random_update_time = 0 
+R_end, P_end, W_end = 0, 0, 0
+R_grip, P_grip, W_grip = 0, 0, 0
+T1, T2, TP, TY = 0, 0, 0, 0
+##############################
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
@@ -59,11 +70,39 @@ def endowrist2base_orientation(roll, pitch, yaw):
     yaw2 = yaw % 360
     return roll2, pitch2, yaw2
 
-# Function to update the label with text
-def update_text_label(label, tool_orientation, gripper_orientation, status_message, torque_values):
-    full_text = f"Tool orientation: {tool_orientation}\nGripper orientation: {gripper_orientation}\n{status_message}\nTorque Values: {torque_values}"
-    label.after(0, lambda: label.config(text=full_text))
+##### NEW:
+##### Function to get vibration value between 0 an 255
+##### As we do in Gripper - main.cpp to get vibration:
+def constrain(val, min_val=0, max_val=255):
+    return max(min_val, min(max_val, val))
+#####
 
+# Function to update the label with text
+def update_text_label(label, tool_orientation, gripper_orientation, status_message, torque_values, vib_indicator): # NEW: vibr_indicator
+    ###### NEW: Find vibration from torques
+    torque_values_dict = {}
+    splited = torque_values.split(",")
+    for i in splited:
+        key, value = i.split("=")
+        key = key.strip()
+        value = float(value.strip())
+        torque_values_dict[key] = value
+    R = torque_values_dict["R1"]
+    P = torque_values_dict["P"]
+    Y = torque_values_dict["Y"]
+    torque_value = R + P + Y
+    vibration = constrain(torque_value*2.5, 0, 255) ## value between 0 an 255
+    color = f"#{int(vibration):02x}{int(255 - vibration):02x}00" ## set color between green and red
+    vib_indicator.after(0, lambda: vib_indicator.config(bg=color))
+    global current_vibration
+    current_vibration = vibration  
+    if not status_message:
+        status_message = "None"
+    full_text = f"Tool orientation: \n{tool_orientation}\n\nGripper orientation: \n{gripper_orientation}\n\nStatus message: {status_message}\n\nTorque Values: \n{torque_values}"
+    font_style = tkFont.Font(family="Arial", size=10, weight="bold")
+    label.after(0, lambda: label.config(text=full_text, font=font_style))
+    
+    
 # Function to read UDP data and update the global variable
 def read_data_UDP():
     global Endowrist_rpy, Gripper_rpy, data_lock
@@ -91,7 +130,7 @@ def read_data_UDP():
             break
 
 # Function to process the latest UDP data and move the robot
-def move_robot(robot, gripper, needle, text_label):
+def move_robot(robot, gripper, needle, text_label, vib_indicator):
     global ZERO_YAW_TOOL, ZERO_YAW_GRIPPER, Endowrist_rpy, Gripper_rpy, data_lock
     global e_roll, e_pitch, e_yaw, g_roll, g_pitch, g_yaw, s1, s2, s3, s4
     
@@ -120,10 +159,10 @@ def move_robot(robot, gripper, needle, text_label):
             endowrist_pose_new = transl(Xr, Yr, Zr) * rotz(math.radians(ZERO_YAW_TOOL)) * rotz(math.radians(endo_yaw)) * roty(math.radians(endo_pitch)) * rotx(math.radians(endo_roll))
             if robot.MoveL_Test(robot.Joints(), endowrist_pose_new) == 0:
                 robot.MoveL(endowrist_pose_new, True)
-                endowrist_orientation_msg = f"R={round(endo_roll)} P={round(endo_pitch)} W={round((endo_yaw+ZERO_YAW_TOOL)%360)}"
+                endowrist_orientation_msg = f"R={round(endo_roll)}, P={round(endo_pitch)}, Y={round((endo_yaw+ZERO_YAW_TOOL)%360)}"
                 status_message = ""
             else:
-                endowrist_orientation_msg = f"R={round(endo_roll)} P={round(endo_pitch)} W={round((endo_yaw+ZERO_YAW_TOOL)%360)}"
+                endowrist_orientation_msg = f"R={round(endo_roll)}, P={round(endo_pitch)}, Y={round((endo_yaw+ZERO_YAW_TOOL)%360)}"
                 status_message = "Robot cannot reach the position"
                 
             if s3 == 0 or s4 == 0:
@@ -156,7 +195,7 @@ def move_robot(robot, gripper, needle, text_label):
             # Aquesta línea. Lectura ("roll") gripper - "roll" endowrist
             gripper_pose_new = transl(Xg, Yg, Zg) * rotz(math.radians(ZERO_YAW_GRIPPER)) * rotz(math.radians(g_yaw)) * roty(math.radians(g_pitch)) * rotx(math.radians(g_roll))
             gripper.setPose(gripper_pose_new)
-            gripper_orientation_msg = f"R={round(g_roll)} P={round(g_pitch)} W={round((g_yaw+ZERO_YAW_GRIPPER)%360)}"    
+            gripper_orientation_msg = f"R={round(g_roll)}, P={round(g_pitch)}, Y={round((g_yaw+ZERO_YAW_GRIPPER)%360)}"    
             if s1 == 0:
                 #Obre la pinça → deixa anar l’agulla
                 needle.setParentStatic(base)
@@ -175,11 +214,37 @@ def move_robot(robot, gripper, needle, text_label):
             servo_torques_msg = f"R1={t1:.2f}, R2={t2:.2f}, P={tp:.2f}, Y={ty:.2f}"
         else:
             servo_torques_msg = "No torque data"
-                     
+        
+        ########### REMOVE ###########
+        global last_random_update_time, R_end, P_end, W_end, R_grip, P_grip, W_grip, T1, T2, TP, TY
+        current_time = time.time()
+        if current_time - last_random_update_time > 2:  
+            R_end = random.uniform(0, 180)
+            P_end = random.uniform(0, 180)
+            W_end = random.uniform(0, 180)
+            R_grip = random.uniform(0, 180)
+            P_grip = random.uniform(0, 180)
+            W_grip = random.uniform(0, 180)
+            T1 = random.uniform(0, 60)
+            T2 = random.uniform(0, 60)
+            TP = random.uniform(0, 60)
+            TY = random.uniform(0, 60)
+            last_random_update_time = current_time
+        endowrist_orientation_msg = f"R={round(R_end)} P={round(P_end)} Y={round(W_end)}"
+        gripper_orientation_msg = f"R={round(R_grip)} P={round(P_grip)} Y={round(W_grip)}"
+        servo_torques_msg = f"R1={T1:.2f}, R2={T2:.2f}, P={TP:.2f}, Y={TY:.2f}"
+        ############################## 
+        
         # Update the label with the latest values
-        update_text_label(text_label, endowrist_orientation_msg, gripper_orientation_msg, status_message, servo_torques_msg)
+        update_text_label(text_label, endowrist_orientation_msg, gripper_orientation_msg, status_message, servo_torques_msg, vib_indicator)
 
         time.sleep(READ_INTERVAL_S)# define the reading interval
+        
+
+def on_vibration_click(vibration_label):
+    global current_vibration
+    vibration_percent = int((current_vibration / 255) * 100)
+    vibration_label.config(text=f"Vibration = {vibration_percent}%")
 
 def on_closing():
     global root, sock
@@ -215,7 +280,19 @@ def main():
     text_label = tk.Label(root, text="", wraplength=300)
     text_label.pack(padx=20, pady=20)
 
+    ############ CREATE BUTTON AND VIBRATION INDICATOR
+    vib_indicator = tk.Button(root, text=f"Vibration\n click to update percentage", 
+                              width=20, height=2, bg="green",
+                              command=lambda: on_vibration_click(vibration_label))
+    vib_indicator.pack(padx=10, pady=10)
+    vibration_label = tk.Label(root, text="Vibration = 0%", font=("Arial", 10, "bold"))
+    vibration_label.pack(pady=(0, 20))
+
+
     # Add sliders for ZERO_YAW_TOOL and ZERO_YAW_GRIPPER
+    slider_label = tk.Label(root, text="Slide to orient the axes", font=("Arial", 10))
+    slider_label.pack(pady=(10, 0)) 
+
     tool_yaw_slider = tk.Scale(root, from_=-180, to=180, orient=tk.HORIZONTAL, label="Tool Yaw",
                                     command=lambda value: set_zero_yaw_tool(float(value)), length=200)
     tool_yaw_slider.set(ZERO_YAW_TOOL)
@@ -232,7 +309,7 @@ def main():
     udp_thread.start()
 
     # Start the robot movement thread
-    robot_thread = threading.Thread(target=move_robot, args=(robot, gripper, needle, text_label))
+    robot_thread = threading.Thread(target=move_robot, args=(robot, gripper, needle, text_label, vib_indicator))
     robot_thread.daemon = True
     robot_thread.start()
 
