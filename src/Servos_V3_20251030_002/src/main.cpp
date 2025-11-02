@@ -151,23 +151,30 @@ void moveServos() {
 
   // ---------------------V1---------------------
   if (!yaw_initialized) {
-    YawInit = Gri_yaw;
+    YawInit = Gri_yaw; // definir un yaw inicial (no varia)
     yaw_initialized = true;
   }
-  yaw = Gri_yaw - YawInit;
+  yaw = Gri_yaw - YawInit; // yaw final = yaw mesurat - yaw inicial
 
   // ---------------------V2---------------------
   if (!yaw_initialized) {
+    prevGriYaw = Gri_yaw; // primera iteració: yaw relatiu = yaw mesurat
+    prevYaw = 0; // yaw mesurat en la iteració anterior = 0
+    yaw_initialized = true;
+  }
+  deltaYaw = Gri_yaw - prevGriYaw; // diferencia entre yaw mesurat i "yaw mesurat en la iteració anterior"
+  yaw = prevYaw + deltaYaw; // yaw final = "yaw final de la iteració anterior" + diferencia d'angles
+  prevYaw = yaw; // definir "yaw final de la iteració anterior" per la propera iteració
+  prevGriYaw = Gri_yaw; // definir "yaw mesurat en la iteració anterior"
+
+  // ---------------------V3---------------------
+  if (!yaw_initialized) {
     prevGriYaw = Gri_yaw; 
-    prevYaw = 0; 
     yaw_initialized = true;
   }
   deltaYaw = Gri_yaw - prevGriYaw;
-  yaw = prevYaw + deltaYaw
-  prevYaw = yaw;
+  yaw = deltaYaw; // el yaw és la diferencia d'angles
   prevGriYaw = Gri_yaw;
-
-
 
 
   // --- Optional gripper open offset (S1 button) ---
