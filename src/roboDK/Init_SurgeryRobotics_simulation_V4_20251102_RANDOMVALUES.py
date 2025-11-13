@@ -105,7 +105,7 @@ def update_text_label(label, tool_orientation, gripper_orientation, status_messa
     
 # Function to read UDP data and update the global variable
 def read_data_UDP():
-    global Endowrist_rpy, Gripper_rpy, data_lock
+    global Endowrist_rpy, Gripper_rpy, data_lock, Servo_torques
     while True:
         try:
             data, addr = sock.recvfrom(BUFFER_SIZE) 

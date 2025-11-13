@@ -14,7 +14,7 @@ const char *ssid = "Robotics_UB";
 const char *password = "rUBot_xx";
 
 // UDP settings
-IPAddress receiverESP32IP(192, 168, 1, 31);
+IPAddress receiverESP32IP(192, 168, 1, 51);
 IPAddress receiverComputerIP(192, 168, 1, 35);
 const int udpPort = 12345;
 WiFiUDP udp;
@@ -45,7 +45,7 @@ float sumRoll1 = 0, sumRoll2 = 0, sumPitch = 0, sumYaw = 0;
 float OldValueRoll = 0, OldValuePitch = 0, OldValueYaw = 0; // we do not use
 float roll = 0, pitch = 0, yaw = 0;
 int s1 = 1, s2 = 1;
-float YawInit = 0, prevGriYaw = 0, prevYaw = 0;
+float YawInit = 0, prevGriYaw = 0, ant_Yaw = 0, deltaYaw = 0;
 bool yaw_initialized = false;
 
 // ####### CONNECT TO WIFI #######################################
@@ -147,41 +147,41 @@ void moveServos() {
   //// yaw stays as-is (0–360)
 
   roll = normalizeAngle(Gri_roll);
-  pitch = normalizeAº(Gri_pitch);
+  pitch = normalizeAngle(Gri_pitch);
 
-  // ---------------------V1---------------------
-  if (!yaw_initialized) {
-    YawInit = Gri_yaw; // definir un yaw inicial (no varia)
-    yaw_initialized = true;
-  }
-  yaw = Gri_yaw - YawInit; // yaw final = yaw mesurat - yaw inicial
+  // // ---------------------V1---------------------
+  // if (!yaw_initialized) {
+  //   YawInit = Gri_yaw; // definir un yaw inicial (no varia)
+  //   yaw_initialized = true;
+  // }
+  // yaw = Gri_yaw - YawInit; // yaw final = yaw mesurat - yaw inicial
 
-  // ---------------------V2---------------------
+  // // ---------------------V2---------------------
   if (!yaw_initialized) {
     prevGriYaw = Gri_yaw; // primera iteració: yaw relatiu = yaw mesurat
-    prevYaw = 0; // yaw mesurat en la iteració anterior = 0
+    ant_Yaw = 0; // yaw mesurat en la iteració anterior = 0
     yaw_initialized = true;
   }
   deltaYaw = Gri_yaw - prevGriYaw; // diferencia entre yaw mesurat i "yaw mesurat en la iteració anterior"
-  yaw = prevYaw + deltaYaw; // yaw final = "yaw final de la iteració anterior" + diferencia d'angles
-  prevYaw = yaw; // definir "yaw final de la iteració anterior" per la propera iteració
+  yaw = ant_Yaw + deltaYaw; // yaw final = "yaw final de la iteració anterior" + diferencia d'angles
+  ant_Yaw = yaw; // definir "yaw final de la iteració anterior" per la propera iteració
   prevGriYaw = Gri_yaw; // definir "yaw mesurat en la iteració anterior"
 
-  // ---------------------V3---------------------
-  if (!yaw_initialized) {
-    prevGriYaw = Gri_yaw; 
-    yaw_initialized = true;
-  }
-  deltaYaw = Gri_yaw - prevGriYaw;
-  yaw = deltaYaw; // el yaw és la diferencia d'angles
-  prevGriYaw = Gri_yaw;
+  // // ---------------------V3---------------------
+  // if (!yaw_initialized) {
+  //   prevGriYaw = Gri_yaw; 
+  //   yaw_initialized = true;
+  // }
+  // deltaYaw = Gri_yaw - prevGriYaw;
+  // yaw = deltaYaw; // el yaw és la diferencia d'angles
+  // prevGriYaw = Gri_yaw;
 
 
-  // --- Optional gripper open offset (S1 button) ---
-  float delta = 0;
-  if (s1 == 0) {
-    delta = 20; // small safe offset for opening
-    Serial.println("S1 pressed → Opening gripper");
+   // --- Optional gripper open offset (S1 button) ---
+   float delta = 0;
+   if (s1 == 0) {
+     delta = 20; // small safe offset for opening
+     Serial.println("S1 pressed → Opening gripper");
   }
 
   // --- Map normalized angles to servo range (0–180°) ---

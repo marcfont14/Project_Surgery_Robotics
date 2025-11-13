@@ -85,7 +85,7 @@ def update_text_label(label, tool_orientation, gripper_orientation, status_messa
     P = torque_values_dict["P"]
     Y = torque_values_dict["Y"]
     torque_value = R + P + Y
-    vibration = constrain(torque_value*2.5, 0, 255) ## value between 0 an 255
+    vibration = constrain(torque_value*25, 0, 255) ## value between 0 an 255
     color = f"#{int(vibration):02x}{int(255 - vibration):02x}00" ## set color between green and red
     vib_indicator.after(0, lambda: vib_indicator.config(bg=color))
     global current_vibration
@@ -99,7 +99,7 @@ def update_text_label(label, tool_orientation, gripper_orientation, status_messa
     
 # Function to read UDP data and update the global variable
 def read_data_UDP():
-    global Endowrist_rpy, Gripper_rpy, data_lock
+    global Endowrist_rpy, Gripper_rpy, data_lock, Servo_torques
     while True:
         try:
             data, addr = sock.recvfrom(BUFFER_SIZE) 

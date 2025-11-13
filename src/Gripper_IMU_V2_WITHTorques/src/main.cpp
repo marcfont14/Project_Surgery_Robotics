@@ -116,9 +116,9 @@ void recieveTorquesUDP() { //
 
         // NEW: code from "LabSession3&4"
         // Vibration motor control based on torque values
-        float totalTorque = Torque_roll1 + Torque_pitch + Torque_yaw;
+        float totalTorque = Torque_roll1 + Torque_pitch + Torque_yaw + Torque_roll2;
         // Convert torque to PWM value (0-255)
-        int vibrationValue = constrain(totalTorque * 2.5, 0, 255); // Adjust the scaling factor as needed
+        int vibrationValue = constrain(totalTorque * 25, 0, 255); // Adjust the scaling factor as needed
         ledcWrite(0, vibrationValue); // Set the PWM value for the vibration motor
         Serial.print("Vibration motor value: ");
         Serial.println(vibrationValue); 
